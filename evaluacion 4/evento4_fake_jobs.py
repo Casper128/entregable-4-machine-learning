@@ -20,7 +20,7 @@
 # 8. Conclusiones y recomendaciones
 
 # %% [markdown]
-# **Ejecución reproducible:** los resultados se regeneran desde el CSV de Kaggle. La selección del modelo utiliza validación de entrenamiento; la prueba se reserva para evaluación. Consulta `docs/revision_rubrica.md` para el estado de entrega.
+# **Ejecución reproducible:** los resultados se regeneran desde el CSV de Kaggle. La selección del modelo utiliza validación de entrenamiento; la prueba se reserva para evaluación.
 #
 # **Relación con el curso:** estadística y correlaciones (semana 4), preparación y reducción de dimensiones (semana 5), comunicación de hallazgos (semanas 7–8), regresión logística, SVM, K-Means y t-SNE (semanas 12–13). TF-IDF y Ward complementan los temas para cumplir el reto textual.
 
@@ -929,7 +929,7 @@ pd.Series(summary, name="valor").to_frame()
 # **Fuentes para consulta:** dataset proporcionado en la guía: https://www.kaggle.com/datasets/shivamb/real-or-fake-fake-jobposting-prediction ; documentación de las herramientas: https://scikit-learn.org/stable/user_guide.html ; material docente de semanas 4, 5, 6, 7–8 y 12–13.
 
 # %%
-# Guardamos tablas para contrastar README, conclusiones y sustentación.
+# Guardamos tablas para contrastar el README y las conclusiones.
 import json
 import hashlib
 import platform

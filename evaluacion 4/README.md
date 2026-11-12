@@ -11,8 +11,6 @@ Asignatura: Análisis de Datos. Docente: Daniel Alexis Nieto Mora. Ingeniería e
 - @Franyelica.
 - @santiagopabon15.
 
-Los nombres completos y aportes individuales deben ser confirmados por el equipo. No se presentan responsabilidades propuestas como contribuciones ya realizadas.
-
 ## Problema y datos
 
 Buscamos clasificar ofertas legítimas y fraudulentas, y descubrir temas mediante agrupamiento sin etiquetas. Fuente: [Real or Fake Job Posting Prediction, Kaggle](https://www.kaggle.com/datasets/shivamb/real-or-fake-fake-jobposting-prediction). El CSV original contiene 17 880 ofertas y 866 fraudes; tras eliminar duplicados exactos quedan 17599 ofertas (4.86% fraudulentas).
@@ -64,11 +62,7 @@ Agrupamiento: k=11; silhouette en muestra: K-Means 0.121, Ward 0.107. SVD conser
 - `descargar_datos.py` y `data/README.md`: obtención y huella del CSV; datos fuera de Git.
 - `results/`: métricas, perfiles, selección k y resumen de ejecución.
 - `figures/`: figuras regeneradas.
-- `docs/revision_rubrica.md`: evidencia por criterio y pendientes reales.
-- `docs/explicacion_metodos.md`: apoyo para sustentar.
-- `docs/colaboracion.md`: procedimiento para aportes reales.
-- `video/guion.md`: distribución de hasta 12 minutos; `video/enlace_video.md`: enlace pendiente de grabación.
 
 ## Verificación
 
-Notebook ejecutado desde cero con el CSV cuya huella SHA-256 es `59253295129d8b6a27607f9904f7d4ddf4dbb0ee35e079c7eb51b58b5e62bf60`. Versiones y métricas están en `results/resumen.json`; dependencias exactas en `requirements-lock.txt`. Las cifras se regeneraron con la versión corregida. El video y la participación individual siguen pendientes de completar por los integrantes.
+Notebook ejecutado desde cero con el CSV cuya huella SHA-256 es `59253295129d8b6a27607f9904f7d4ddf4dbb0ee35e079c7eb51b58b5e62bf60`. Versiones y métricas están en `results/resumen.json`; dependencias exactas en `requirements-lock.txt`. Las cifras corresponden a la ejecución completa del notebook.
