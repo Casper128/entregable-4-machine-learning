@@ -1,6 +1,6 @@
 # Colaboración y commits
 
-Integrantes: @dariomontoya0505, @Franyelica, @santiagopabon15 y Darwin (usuario pendiente de confirmar).
+Integrantes: @dariomontoya0505, @Franyelica, @santiagopabon15 y @Casper128 (Darwin).
 
 Los commits deben reflejar trabajo realizado. No se atribuyen automáticamente cambios a una persona solo por tener su usuario de GitHub. Cada integrante debe revisar, modificar y sustentar su aporte con su propia identidad configurada.
 
@@ -22,4 +22,4 @@ git diff --cached
 git commit -m "Descripción concreta del aporte realizado"
 ```
 
-Evitar agregar todo sin revisar. Coordinar las ediciones del notebook para no sobrescribir trabajo. El enlace del repositorio y la distribución real de aportes deben confirmarse antes de preparar atribuciones individuales. No se ha creado un repositorio independiente porque la guía solicita usar el repositorio existente del curso.
+Evitar agregar todo sin revisar. Coordinar las ediciones del notebook para no sobrescribir trabajo. El enlace del repositorio y la distribución real de aportes deben confirmarse antes de preparar atribuciones individuales. El repositorio proporcionado por el usuario es https://github.com/Casper128/entregable-4-machine-learning. La copia local contiene los cambios técnicos; cada integrante debe registrar sus aportes reales con su identidad. No se crean commits ficticios por persona.
