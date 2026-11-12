@@ -1,0 +1,48 @@
+{
+  "modelo_seleccionado_por_cv": "LinearSVC",
+  "cv_ap_seleccionado": 0.8748068567448372,
+  "hiperparametros": {
+    "LogReg": {
+      "clf__C": 64,
+      "prep__txt__ngram_range": [
+        1,
+        2
+      ]
+    },
+    "LinearSVC": {
+      "clf__C": 1.0,
+      "prep__txt__ngram_range": [
+        1,
+        2
+      ]
+    }
+  },
+  "umbrales_oof": {
+    "LogReg": 0.6806691202449439,
+    "LinearSVC": -0.1464628352790076
+  },
+  "test": {
+    "n": 3520,
+    "fraudes": 171,
+    "tn": 3316,
+    "fp": 33,
+    "fn": 20,
+    "tp": 151,
+    "precision": 0.8206521739130435,
+    "recall": 0.8830409356725146,
+    "f1": 0.8507042253521127,
+    "ap": 0.9299141645480056,
+    "roc_auc": 0.9922172805358673
+  },
+  "n_ofertas": 17599,
+  "tasa_fraude": 0.04863912722313768,
+  "k": 11,
+  "varianza_svd": 0.2786311082874925,
+  "estabilidad_ari_media": 0.5783314612984416,
+  "isolation_ap": 0.09711963489424341,
+  "sha256_csv": "59253295129d8b6a27607f9904f7d4ddf4dbb0ee35e079c7eb51b58b5e62bf60",
+  "python": "3.12.15",
+  "sklearn": "1.9.1",
+  "pandas": "3.1.1",
+  "numpy": "2.5.4"
+}

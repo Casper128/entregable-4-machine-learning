@@ -20,9 +20,9 @@
 # 8. Conclusiones y recomendaciones
 
 # %% [markdown]
-# **Estado de revisión:** este notebook conserva resultados de la ejecución original. Se corrigió la selección del modelo para usar validación, y se añadieron precisiones metodológicas. Las celdas modificadas requieren una ejecución completa con el CSV antes de presentar las cifras como resultados de esta versión. Consulta `docs/revision_rubrica.md`.
+# **Ejecución reproducible:** los resultados se regeneran desde el CSV de Kaggle. La selección del modelo utiliza validación de entrenamiento; la prueba se reserva para evaluación. Consulta `docs/revision_rubrica.md` para el estado de entrega.
 #
-# **Relación con el curso:** estadística y correlaciones (semana 4), preparación y reducción de dimensiones (semana 5), comunicación de hallazgos (semanas 7–8), regresión logística, SVM, K-Means y t-SNE (semanas 12–13). TF-IDF y Ward complementan estos temas para cumplir el reto textual.
+# **Relación con el curso:** estadística y correlaciones (semana 4), preparación y reducción de dimensiones (semana 5), comunicación de hallazgos (semanas 7–8), regresión logística, SVM, K-Means y t-SNE (semanas 12–13). TF-IDF y Ward complementan los temas para cumplir el reto textual.
 
 # %% [markdown]
 # ## 1. Descripción del problema
@@ -103,6 +103,8 @@ def savefig(name):
 # %% [markdown]
 # ## 2. Comprensión y exploración de los datos
 # ### 2.1 Estructura general
+#
+# Las dimensiones iniciales describen el archivo original. Desde la depuración y reserva por grupos, los análisis de distribuciones, términos y correlaciones se calculan únicamente en entrenamiento.
 
 # %%
 df = pd.read_csv(DATA_PATH)
@@ -137,6 +139,15 @@ print(f"Ofertas cuyo texto completo repite el de otra oferta: {n_dup_txt} "
       f"({df[df.duplicated(subset=TEXT_COLS)]['fraudulent'].sum()} de ellas fraudulentas)")
 df = df.drop_duplicates(subset=[c for c in df.columns if c != "job_id"]).reset_index(drop=True)
 print("Dimensiones tras eliminar duplicados exactos:", df.shape)
+# Reservamos prueba antes del EDA que orienta decisiones.
+df_all = df.copy()
+initial_groups = pd.util.hash_pandas_object(df_all[TEXT_COLS].fillna(""), index=False).values
+reserved_train, reserved_test = next(StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED).split(
+    df_all, df_all["fraudulent"], initial_groups))
+assert not set(initial_groups[reserved_train]) & set(initial_groups[reserved_test])
+df = df_all.iloc[reserved_train].copy()
+print("EDA restringido a entrenamiento:", df.shape)
+
 
 # %% [markdown]
 # **Duplicados:** 281 registros son copias exactas y se eliminan. Además, ~1 800 ofertas repiten el texto completo de
@@ -149,11 +160,11 @@ target_counts = df["fraudulent"].value_counts().sort_index()
 print(target_counts, "\nProporción de fraude: {:.2%}".format(df["fraudulent"].mean()))
 
 fig, ax = plt.subplots(figsize=(5, 3.5))
-sns.countplot(x="fraudulent", data=df, ax=ax, palette=["#4C72B0", "#C44E52"])
+sns.countplot(x="fraudulent", hue="fraudulent", legend=False, data=df, ax=ax, palette=["#4C72B0", "#C44E52"])
 for p in ax.patches:
     ax.annotate(f"{int(p.get_height()):,}", (p.get_x() + p.get_width() / 2, p.get_height()),
                 ha="center", va="bottom")
-ax.set_xticklabels(["Legítima (0)", "Fraudulenta (1)"]); ax.set_xlabel(""); ax.set_title("Distribución de la variable objetivo")
+ax.set_xticks([0, 1], ["Legítima (0)", "Fraudulenta (1)"]); ax.set_xlabel(""); ax.set_title("Distribución de la variable objetivo")
 savefig("01_target")
 
 # %% [markdown]
@@ -179,7 +190,7 @@ savefig("02_missing_by_class")
 miss_by_class.round(1)
 
 # %% [markdown]
-# **Hallazgo:** los faltantes **no son aleatorios**: en varias columnas (p. ej. `company_profile`) la ausencia es
+# **Hallazgo:** las tasas de faltantes **difieren entre clases**: en varias columnas (p. ej. `company_profile`) la ausencia es
 # mucho más frecuente en ofertas fraudulentas. Por eso no basta con imputar: **la ausencia misma es información** y
 # se codificará como indicador binario (`missing_*`) y como categoría explícita `"Missing"` en las categóricas.
 
@@ -251,9 +262,9 @@ df["n_phone"] = raw_all.str.count(r"#PHONE_")
 
 fig, axes = plt.subplots(1, 4, figsize=(16, 3.6))
 for ax, c in zip(axes, ["company_profile", "description", "requirements", "benefits"]):
-    sns.boxplot(x="fraudulent", y=np.log1p(df[f"len_{c}"]), data=df, ax=ax, palette=["#4C72B0", "#C44E52"], showfliers=False)
+    sns.boxplot(x="fraudulent", hue="fraudulent", legend=False, y=np.log1p(df[f"len_{c}"]), data=df, ax=ax, palette=["#4C72B0", "#C44E52"], showfliers=False)
     ax.set_title(f"log(1+longitud) {c}"); ax.set_xlabel(""); ax.set_ylabel("")
-    ax.set_xticklabels(["Legítima", "Fraude"])
+    ax.set_xticks([0, 1], ["Legítima", "Fraude"])
 savefig("06_longitud_texto")
 
 df.groupby("fraudulent")[["n_url", "n_email", "n_phone"]].mean().round(3)
@@ -326,6 +337,17 @@ savefig("08_correlaciones")
 # | **Anti-fuga** | Partición 80/20 **estratificada por clase y agrupada por texto** (`StratifiedGroupKFold`) **antes** de ajustar cualquier transformación; la validación cruzada también es agrupada; todo vive dentro de `Pipeline` y se reajusta en cada pliegue. | El TF-IDF (vocabulario e IDF), escaladores y codificadores aprenden de los datos; los textos repetidos inflarían las métricas. |
 
 # %%
+# Recuperamos el corpus para aplicar solo transformaciones deterministas.
+# El EDA anterior se calculó exclusivamente sobre entrenamiento.
+df = df_all.copy()
+df["country"] = df["location"].fillna("").str.split(",").str[0].str.strip().replace("", "Missing")
+df["has_salary"] = df["salary_range"].notna().astype(int)
+for c in TEXT_COLS:
+    df[f"len_{c}"] = df[c].fillna("").str.len()
+raw_all = df[TEXT_COLS].fillna("").agg(" ".join, axis=1)
+for field, token in [("n_url", "#URL_"), ("n_email", "#EMAIL_"), ("n_phone", "#PHONE_")]:
+    df[field] = raw_all.str.count(token)
+
 def clean_text(s: str) -> str:
     s = re.sub(r"#URL_[^#]*#", " urltoken ", s)
     s = re.sub(r"#EMAIL_[^#]*#", " emailtoken ", s)
@@ -370,6 +392,8 @@ X_train, X_test, y_train, y_test = X.iloc[tr_idx], X.iloc[te_idx], y[tr_idx], y[
 g_train = groups[tr_idx]
 assert not set(groups[tr_idx]) & set(groups[te_idx])
 print(f"Train: {X_train.shape} ({y_train.mean():.2%} fraude) | Test: {X_test.shape} ({y_test.mean():.2%} fraude)")
+assert np.array_equal(tr_idx, reserved_train) and np.array_equal(te_idx, reserved_test)
+
 
 # %%
 def make_tfidf(max_features=50000):
@@ -403,7 +427,7 @@ def prep_combined():
 # | Algoritmo | Por qué es apropiado | Supuestos | Ventajas | Limitaciones |
 # |---|---|---|---|---|
 # | **Regresión Logística** (L2, `class_weight="balanced"`) | Referente clásico para texto TF-IDF de alta dimensión y disperso. | Relación lineal entre variables y log-odds; observaciones independientes. | Rápida, entrega probabilidades, coeficientes interpretables (qué palabras empujan a fraude). | No captura interacciones no lineales; sensible a colinealidad (mitigada por la regularización). |
-# | **SVM lineal** (`LinearSVC`) | Maximiza el margen; muy eficaz en clasificación de texto con muchas variables. | Clases (aprox.) separables linealmente en el espacio TF-IDF. | Robusta en alta dimensión, buen desempeño con texto. | No da probabilidades calibradas (usamos `decision_function`); menos interpretable que la LR. |
+# | **SVM lineal** (`LinearSVC`) | Maximiza el margen; muy eficaz en clasificación de texto con muchas variables. | Frontera lineal con margen suave; no exige separabilidad perfecta. | Robusta en alta dimensión, buen desempeño con texto. | No da probabilidades calibradas (usamos `decision_function`); menos interpretable que la LR. |
 # | **Random Forest** (solo variables estructuradas) | Captura interacciones no lineales entre indicadores (p. ej. sin logo **y** sin perfil). | Ninguno fuerte sobre la distribución. | Robusto a escalas, importancia de variables. | Poco eficiente con TF-IDF disperso de 50k columnas; por eso se usa en el enfoque estructurado. |
 # | **Histogram Gradient Boosting** (estructurado) | *Boosting* potente para datos tabulares. | — | Suele superar a RF en tabulares; maneja desbalance con pesos. | Más hiperparámetros; riesgo de sobreajuste si no se regula. |
 #
@@ -415,6 +439,8 @@ def prep_combined():
 #
 # **Protocolo:** validación cruzada estratificada **y agrupada por texto** de 5 pliegues **sobre el entrenamiento** para comparar y ajustar;
 # el conjunto de prueba se usa **una sola vez** al final.
+#
+# **Optimización SVM:** usamos el problema primal (`dual=False`) y hasta 10 000 iteraciones. El piloto convergió; esta elección cambia el procedimiento numérico, no la definición del clasificador lineal con margen suave.
 
 # %%
 CV = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)
@@ -435,7 +461,7 @@ def cv_eval(name, model, Xtr=X_train, ytr=y_train, cv=CV):
 
 # %%
 cv_eval("A | LogReg balanced (estructurado)",
-        Pipeline([("prep", prep_structured()), ("clf", LogisticRegression(max_iter=3000, class_weight="balanced"))]))
+        Pipeline([("prep", prep_structured()), ("clf", LogisticRegression(max_iter=5000, class_weight="balanced"))]))
 cv_eval("A | RandomForest balanced (estructurado)",
         Pipeline([("prep", prep_structured()), ("clf", RandomForestClassifier(n_estimators=300, min_samples_leaf=2,
                   class_weight="balanced_subsample", n_jobs=-1, random_state=SEED))]))
@@ -448,25 +474,25 @@ cv_eval("A | HistGradientBoosting balanced (estructurado)",
 
 # %%
 cv_eval("B | LogReg balanced (texto)",
-        Pipeline([("prep", prep_text()), ("clf", LogisticRegression(max_iter=3000, C=4, class_weight="balanced"))]))
+        Pipeline([("prep", prep_text()), ("clf", LogisticRegression(max_iter=5000, C=4, class_weight="balanced"))]))
 cv_eval("B | LinearSVC balanced (texto)",
-        Pipeline([("prep", prep_text()), ("clf", LinearSVC(C=0.3, class_weight="balanced"))]))
+        Pipeline([("prep", prep_text()), ("clf", LinearSVC(dual=False, max_iter=10000, C=0.3, class_weight="balanced", random_state=SEED))]))
 
 # %% [markdown]
 # ### 4.4 Enfoque C — texto + estructuradas, y comparación de estrategias de desbalance
 
 # %%
 cv_eval("C | LogReg SIN tratamiento (combinado)",
-        Pipeline([("prep", prep_combined()), ("clf", LogisticRegression(max_iter=3000, C=4))]))
+        Pipeline([("prep", prep_combined()), ("clf", LogisticRegression(max_iter=5000, C=4))]))
 cv_eval("C | LogReg balanced (combinado)",
-        Pipeline([("prep", prep_combined()), ("clf", LogisticRegression(max_iter=3000, C=4, class_weight="balanced"))]))
+        Pipeline([("prep", prep_combined()), ("clf", LogisticRegression(max_iter=5000, C=4, class_weight="balanced"))]))
 cv_eval("C | LogReg + submuestreo (combinado)",
         ImbPipeline([("prep", prep_combined()), ("rus", RandomUnderSampler(random_state=SEED)),
-                     ("clf", LogisticRegression(max_iter=3000, C=4))]))
+                     ("clf", LogisticRegression(max_iter=5000, C=4))]))
 cv_eval("C | LinearSVC SIN tratamiento (combinado)",
-        Pipeline([("prep", prep_combined()), ("clf", LinearSVC(C=0.3))]))
+        Pipeline([("prep", prep_combined()), ("clf", LinearSVC(dual=False, max_iter=10000, C=0.3, random_state=SEED))]))
 cv_eval("C | LinearSVC balanced (combinado)",
-        Pipeline([("prep", prep_combined()), ("clf", LinearSVC(C=0.3, class_weight="balanced"))]))
+        Pipeline([("prep", prep_combined()), ("clf", LinearSVC(dual=False, max_iter=10000, C=0.3, class_weight="balanced", random_state=SEED))]))
 
 # %%
 res = pd.DataFrame(cv_results).T.sort_values("pr_auc", ascending=False)
@@ -492,16 +518,14 @@ savefig("09_comparacion_cv")
 
 # %% [markdown]
 # ### 4.5 Optimización de hiperparámetros (enfoque combinado)
-# Búsqueda en rejilla con validación cruzada estratificada y agrupada de 3 pliegues sobre el entrenamiento, optimizando
-# **PR-AUC**. Se ajusta la regularización `C` y el tamaño del n-grama. (En una primera corrida el óptimo quedó en el
-# borde de la rejilla, por lo que se amplió el rango de `C` hasta que el mejor valor quedara en el interior.)
+# Búsqueda en rejilla con validación estratificada y agrupada de tres pliegues sobre entrenamiento. Se comparan valores de C y unigramas/bigramas usando AP. La tabla informa todos los candidatos; un óptimo en el borde de la rejilla indica que podría explorarse un rango mayor en un estudio posterior. No garantiza una mejora respecto a otras configuraciones evaluadas con cinco pliegues: las particiones son distintas.
 
 # %%
 CV3 = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=SEED)
 grids = {
-    "LogReg": (Pipeline([("prep", prep_combined()), ("clf", LogisticRegression(max_iter=3000, class_weight="balanced"))]),
+    "LogReg": (Pipeline([("prep", prep_combined()), ("clf", LogisticRegression(max_iter=5000, class_weight="balanced"))]),
                {"clf__C": [4, 16, 64], "prep__txt__ngram_range": [(1, 1), (1, 2)]}),
-    "LinearSVC": (Pipeline([("prep", prep_combined()), ("clf", LinearSVC(class_weight="balanced"))]),
+    "LinearSVC": (Pipeline([("prep", prep_combined()), ("clf", LinearSVC(dual=False, max_iter=10000, class_weight="balanced", random_state=SEED))]),
                   {"clf__C": [0.3, 1.0, 3.0], "prep__txt__ngram_range": [(1, 1), (1, 2)]}),
 }
 best = {}
@@ -653,7 +677,7 @@ display(df.loc[err[(err.y == 0) & (err.pred == 1)].sort_values("score", ascendin
 # | Algoritmo | Justificación | Supuestos | Ventajas | Limitaciones |
 # |---|---|---|---|---|
 # | **K-Means** (sobre LSA normalizado ≈ similitud coseno) | Estándar para agrupar documentos; escala a todo el corpus. | Grupos convexos, de tamaño y varianza parecidos; hay que fijar *k*. | Rápido, centroides interpretables como "temas". | Sensible a la inicialización y a *k*; asigna todo punto a algún grupo. |
-# | **Aglomerativo (Ward)** | Visión jerárquica; no depende de una inicialización aleatoria. | Ward minimiza la varianza intra-grupo (distancia euclidiana). | Determinista, permite ver la estructura jerárquica. | Memoria O(n²) → se usa una muestra estratificada de 6 000 documentos. |
+# | **Aglomerativo (Ward)** | Visión jerárquica; no depende de una inicialización aleatoria. | Ward minimiza la varianza intra-grupo (distancia euclidiana). | Determinista, permite ver la estructura jerárquica. | Memoria O(n²) → se usa una muestra aleatoria de hasta 6 000 documentos, sin consultar etiquetas. |
 # | **NMF** (modelo de tópicos, complementario) | Descompone TF-IDF en tópicos aditivos y legibles. | Datos no negativos. | Tópicos muy interpretables; asignación "suave". | Requiere fijar número de tópicos. |
 # | **Isolation Forest** (anomalías, complementario) | Pregunta si el fraude es "atípico" en el espacio textual. | Las anomalías son pocas y fáciles de aislar. | Sin etiquetas, puntaje continuo. | El fraude puede parecerse a ofertas normales. |
 
@@ -696,9 +720,7 @@ K = int(sel.loc[4:12, "silhouette"].idxmax())
 print("k elegido:", K)
 
 # %% [markdown]
-# **Nota:** en texto es normal que la *silhouette* sea baja (≈0.05–0.15): las temáticas se solapan y los
-# documentos comparten vocabulario general. Por eso la elección de *k* combina métricas internas con la
-# **interpretabilidad** de los grupos (términos representativos), que es el objetivo del componente.
+# **Elección de k:** la mejor silhouette global del rango probado se obtuvo con k=2. Esa opción da una segmentación muy general. Para describir varios temas laborales se estableció un rango de 4 a 12 grupos y se escogió k=11 por silhouette dentro de ese rango, contrastando Davies-Bouldin e interpretabilidad. Es una decisión de granularidad, no una afirmación de que k=11 sea el óptimo global. La separación limitada obliga a interpretar los términos y ejemplos junto con las métricas; no existe un umbral universal de silhouette aceptable para texto.
 
 # %% [markdown]
 # ### 5.2 K-Means: entrenamiento, estabilidad y métricas
@@ -716,29 +738,29 @@ print(f"Estabilidad K-Means (ARI entre 5 semillas): media={np.mean(ari_runs):.3f
 # ### 5.3 Agrupamiento jerárquico aglomerativo (Ward)
 
 # %%
-_, idx_s = train_test_split(np.arange(len(df)), test_size=6000, stratify=y, random_state=SEED)
+idx_s = np.random.default_rng(SEED).choice(len(df), size=min(6000, len(df)), replace=False)
 Zs = Z[idx_s]
+# Comparación con los dos métodos entrenados en la misma muestra aleatoria.
+km_sample = KMeans(n_clusters=K, n_init=20, random_state=SEED).fit(Zs)
 agg = AgglomerativeClustering(n_clusters=K, linkage="ward").fit(Zs)
 
 unsup_metrics = pd.DataFrame({
-    "K-Means": {"silhouette": silhouette_score(Zs, km.labels_[idx_s]),
-                "davies_bouldin": davies_bouldin_score(Zs, km.labels_[idx_s]),
-                "calinski_harabasz": calinski_harabasz_score(Zs, km.labels_[idx_s]),
-                "ARI vs etiqueta": adjusted_rand_score(y[idx_s], km.labels_[idx_s]),
-                "NMI vs etiqueta": normalized_mutual_info_score(y[idx_s], km.labels_[idx_s])},
+    "K-Means": {"silhouette": silhouette_score(Zs, km_sample.labels_),
+                "davies_bouldin": davies_bouldin_score(Zs, km_sample.labels_),
+                "calinski_harabasz": calinski_harabasz_score(Zs, km_sample.labels_),
+                "ARI vs etiqueta": adjusted_rand_score(y[idx_s], km_sample.labels_),
+                "NMI vs etiqueta": normalized_mutual_info_score(y[idx_s], km_sample.labels_)},
     "Aglomerativo Ward": {"silhouette": silhouette_score(Zs, agg.labels_),
                           "davies_bouldin": davies_bouldin_score(Zs, agg.labels_),
                           "calinski_harabasz": calinski_harabasz_score(Zs, agg.labels_),
                           "ARI vs etiqueta": adjusted_rand_score(y[idx_s], agg.labels_),
                           "NMI vs etiqueta": normalized_mutual_info_score(y[idx_s], agg.labels_)},
 }).T
-print(f"Acuerdo K-Means vs Ward (ARI, misma muestra): {adjusted_rand_score(km.labels_[idx_s], agg.labels_):.3f}")
+print(f"Acuerdo K-Means vs Ward (ARI, misma muestra): {adjusted_rand_score(km_sample.labels_, agg.labels_):.3f}")
 unsup_metrics.round(3)
 
 # %% [markdown]
-# *Métricas calculadas sobre la misma muestra de 6 000 documentos para que la comparación sea justa.*
-# ARI y NMI frente a la etiqueta **se esperan cercanos a 0**: los grupos describen **temas** (ventas, TI, salud,
-# atención al cliente…), no "fraude vs. legítimo". La pregunta relevante es si **algún tema concentra fraude**.
+# **Comparación:** ambos algoritmos se entrenan y evalúan en la misma muestra aleatoria de hasta 6 000 documentos. ARI y NMI frente a las etiquetas son contrastes posteriores: los grupos se construyen sin `fraudulent`.
 
 # %% [markdown]
 # ### 5.4 Interpretación de los grupos (K-Means)
@@ -823,20 +845,44 @@ for a in axes.ravel(): a.set_xticks([]); a.set_yticks([])
 savefig("18_proyecciones_2d")
 
 # %% [markdown]
-# **¿Qué se conserva y qué se pierde?**
-# * **SVD/LSA** es lineal: las 2 primeras componentes conservan solo una fracción pequeña de la varianza (figura 14),
-#   por lo que los grupos se ven muy solapados. Con 100 componentes se conserva suficiente estructura para agrupar.
-# * **t-SNE** conserva vecindarios **locales**: los grupos se ven como "islas" bien definidas, pero las distancias
-#   entre islas y sus tamaños **no** son interpretables.
-# * **UMAP** conserva vecindarios locales y algo más de la estructura **global**; en este corpus comprimió la mayoría de
-#   las ofertas en un núcleo denso y dejó las plantillas como puntos aislados, así que t-SNE resultó más legible.
-# * En las tres proyecciones el fraude **no forma una isla propia**: en t-SNE se ve concentrado en una región (la de
-#   administración / atención al cliente), pero mezclado con ofertas legítimas. Esto coincide con el ARI ≈ 0 y explica por qué el componente supervisado es necesario para detectarlo.
+# **Interpretación:** SVD retiene 27.9% de la varianza en 100 componentes. Las proyecciones 2D simplifican esta representación: permiten explorar vecindarios y solapamientos, pero no demuestran que los grupos sean categorías definitivas. t-SNE prioriza relaciones locales y UMAP depende de su configuración; ninguna proyección prueba por sí misma una mejor estructura global.
 
 # %% [markdown]
 # ## 7. Análisis comparativo entre aprendizaje supervisado y no supervisado
 #
-# Resumen numérico de ambos componentes (calculado en la celda siguiente) y respuestas a las 8 preguntas de la guía.
+# ### 7.1 Respuestas a las ocho preguntas de la guía
+#
+# **1. ¿Qué problema resuelve cada componente?** El supervisado aprende de ofertas etiquetadas para priorizar publicaciones sospechosas. El no supervisado agrupa textos para comprender temáticas; después consultamos la etiqueta para describir la concentración del fraude.
+#
+# **2. ¿Por qué estos algoritmos?** Regresión logística y SVM lineal se relacionan con los modelos del curso y permiten trabajar con TF-IDF disperso. Los árboles son referencias con variables estructuradas. K-Means permite resumir temas mediante centroides y Ward ofrece una comparación jerárquica. NMF e Isolation Forest complementan la exploración.
+#
+# **3. ¿Qué dificultades hubo?** Desbalance, campos ausentes, categorías numerosas, textos duplicados y alta dimensionalidad. Usamos ponderación de clases, indicadores de ausencia, codificación de categorías, particiones agrupadas por texto y SVD. Las etiquetas no entran en el agrupamiento. En esta versión reservamos prueba antes del EDA, que se calcula solo en entrenamiento. Como el corpus ya se había explorado en una versión anterior, una evaluación externa nueva sigue siendo recomendable.
+#
+# **4. ¿Se identificaron los casos de interés?** El modelo seleccionado por AP de validación fue **LinearSVC**, con AP CV = **0.875**. En prueba, sobre 3520 ofertas y 171 fraudes, detectó **151**, omitió **20** y produjo **33** falsas alarmas. Precision = **0.821**, Recall = **0.883**, F1 = **0.851**, AP = **0.930** y ROC-AUC = **0.992**. Son resultados de este conjunto, no garantías sobre ofertas nuevas.
+#
+# **5. ¿Qué estructuras se descubrieron?** K-Means organizó el corpus en **11 grupos**. Sus términos y ejemplos permiten interpretar temas laborales. Las tasas de fraude varían entre grupos: se describen en `results/perfiles_kmeans.csv` y la figura 16. La separación es limitada; no debemos presentar los grupos como categorías naturales definitivas.
+#
+#
+#
+# **Ejemplo de interpretación temática:** el grupo 1 incluye términos como *office, duties, accounting* y reúne 1 996 ofertas, con 16,8 % de fraude; lo interpretamos como un perfil relacionado con oficina y administración. El grupo 6 contiene *service, home, care, customer*, reúne 3 307 ofertas y presenta 10,1 % de fraude: mezcla atención, servicios y trabajo en el hogar. Son nombres orientativos basados en vocabulario, no categorías oficiales. Juntos representan 30.1% de las ofertas y 78.2% de los fraudes. Los grupos de enseñanza en el extranjero y programas de aprendizaje no presentan fraude etiquetado en este corpus; eso no garantiza que nuevas ofertas de esos temas sean legítimas.
+#
+# **6. ¿Qué relación tienen grupos y etiquetas?** En la muestra de comparación, K-Means obtuvo ARI = **-0.004** y Ward **-0.010**. Estos valores evalúan concordancia con las dos etiquetas, no legibilidad temática. Una baja concordancia es compatible con que ciertos temas concentren fraude.
+#
+# **7. ¿Qué se conserva o pierde al reducir dimensiones?** Las 100 componentes SVD explican **27.9%** de la varianza. Se conservan combinaciones dominantes de términos y se pierden detalles que también podrían ser útiles. t-SNE representa relaciones locales: las distancias entre islas y sus tamaños no deben leerse como distancias reales del corpus. La visualización no sustituye las métricas del espacio de agrupamiento.
+#
+# **8. ¿Qué enfoque recomendamos?** **LinearSVC** como apoyo para priorizar revisión humana, seleccionado con validación de entrenamiento. El umbral se ajustó maximizando F1 OOF; una aplicación que exija más recall debe definir antes su política de costos o un mínimo de precision. Los clusters aportan contexto temático y no reemplazan al clasificador.
+#
+# ### 7.2 Comparación final en prueba
+#
+# Los modelos se seleccionan por validación; esta tabla describe su evaluación final. AP corresponde a `average_precision_score`.
+#
+# | modelo | umbral | precision | recall | f1 | pr_auc | roc_auc |
+# | --- | --- | --- | --- | --- | --- | --- |
+# | RandomForest (estructurado) | umbral por defecto | 0.660 | 0.737 | 0.696 | 0.824 | 0.981 |
+# | LogReg (texto+estructurado) | umbral por defecto | 0.860 | 0.860 | 0.860 | 0.922 | 0.991 |
+# | LogReg (texto+estructurado) | umbral ajustado (OOF) | 0.898 | 0.825 | 0.860 | 0.922 | 0.991 |
+# | LinearSVC (texto+estructurado) | umbral por defecto | 0.907 | 0.860 | 0.883 | 0.930 | 0.992 |
+# | LinearSVC (texto+estructurado) | umbral ajustado (OOF) | 0.821 | 0.883 | 0.851 | 0.930 | 0.992 |
 
 # %%
 summary = {
@@ -853,163 +899,20 @@ summary = {
 pd.Series(summary, name="valor").to_frame()
 
 # %% [markdown]
-# ### 7.1 Respuestas a las preguntas de la guía
-#
-# **1. ¿Qué problema resuelve cada componente?**
-# El **supervisado** responde a *"¿esta oferta concreta es fraudulenta?"*: aprende, a partir de ejemplos etiquetados,
-# una función que asigna un puntaje de riesgo a cada publicación nueva. El **no supervisado** responde a *"¿qué tipos
-# de publicaciones existen y cómo se organizan?"*: sin mirar la etiqueta, describe temáticas (administración, atención
-# al cliente, ventas, TI, marketing, plantillas de agencias…) y solo después se pregunta en cuáles se concentra el
-# fraude. El primero es una herramienta de **decisión**; el segundo, de **exploración y comprensión**.
-#
-# **2. ¿Qué algoritmos se seleccionaron y por qué?**
-# * *Supervisado:* **Regresión Logística** y **SVM lineal** sobre TF-IDF (+ estructuradas), porque los modelos lineales
-#   son el estándar en texto de alta dimensión y disperso (16–50 mil columnas): entrenan en segundos, se regularizan
-#   bien y son interpretables. **Random Forest** y **HistGradientBoosting** se usaron en el enfoque estructurado porque
-#   capturan interacciones entre indicadores (sin logo × sin perfil × industria) y no requieren escalar.
-# * *No supervisado:* **K-Means** sobre LSA normalizado (se relaciona con la similitud coseno, aunque K-Means estándar no equivale exactamente a spherical K-Means, escala a 17 mil
-#   documentos y sus centroides se leen como temas) y **aglomerativo Ward** (determinista, jerárquico, sirve para
-#   contrastar la estabilidad de K-Means). **NMF** e **Isolation Forest** se añadieron como complemento: NMF da tópicos
-#   más legibles e Isolation Forest prueba la hipótesis "el fraude es una anomalía textual".
-#
-# **3. ¿Qué dificultades se presentaron?**
-# * **Desbalance (4,9 % de fraude):** la *accuracy* es insuficiente por sí sola (98,4 % para nuestro modelo, pero 95 % para uno que nunca
-#   detecta fraude). Se resolvió con métricas de la clase positiva (PR-AUC, F1), ponderación de clases y ajuste de
-#   umbral. El submuestreo resultó contraproducente (PR-AUC 0,64 vs 0,89 con ponderación): descarta ~90 % de las
-#   ofertas legítimas y con ellas mucho vocabulario útil.
-# * **Duplicados y fuga de información:** 281 duplicados exactos y ~1 800 ofertas con texto repetido. Con una
-#   partición aleatoria simple las métricas salían infladas (en una primera corrida el F1 de prueba llegó a 0,92). Se
-#   corrigió con partición y validación **agrupadas por texto** (`StratifiedGroupKFold`).
-# * **Alta cardinalidad y faltantes informativos:** `location` (3 105 valores), `department` (1 337) y `salary_range`
-#   (874). Se resolvió extrayendo el país, agrupando categorías raras y usando indicadores de faltante.
-# * **Agrupamiento de texto:** las *silhouette* son bajas (≈0,10) y K-Means es moderadamente inestable (ARI medio entre
-#   semillas = 0,58). Es típico de texto, donde los temas se solapan; por eso la interpretación se apoya en términos
-#   representativos y en la coincidencia con NMF (NMI = 0,56), no solo en métricas internas.
-# * **Selección de *k*:** la silhouette máxima está en k=2, pero esa partición solo separa un bloque de plantillas casi
-#   idénticas del resto y no describe temáticas. Se eligió k=11 (mejor silhouette en el rango 4–12, con Davies-Bouldin
-#   entre los más bajos).
-#
-# **4. ¿El modelo supervisado identificó correctamente los casos de interés?**
-# Sí. La **SVM lineal con texto + variables estructuradas** obtuvo en el conjunto de prueba (3 520 ofertas, 171
-# fraudulentas, nunca vistas durante el ajuste) **PR-AUC = 0,931**, ROC-AUC = 0,991 y, con el umbral elegido por
-# validación cruzada, **Recall = 0,877, Precision = 0,815, F1 = 0,845**. La matriz de confusión muestra **150 de 171
-# fraudes detectados**, 21 no detectados y 34 falsas alarmas entre 3 349 ofertas legítimas (1 %). La línea base del
-# azar en PR-AUC es 0,049, por lo que su AP supera ampliamente esa referencia; el cociente no significa que detecte 19 veces más fraudes. Los resultados de prueba son
-# coherentes con la validación cruzada (PR-AUC 0,91 en 5 pliegues), aunque esta coincidencia no demuestra por sí sola ausencia de sobreajuste.
-#
-# **5. ¿El modelo no supervisado descubrió estructuras que no eran evidentes?**
-# Sí, en dos sentidos:
-# * **El fraude se concentra temáticamente.** Sin usar etiquetas, dos grupos de K-Means —*administración / oficina /
-#   contabilidad* (16,8 % de fraude, *lift* 3,5×) y *atención al cliente / trabajo desde casa / cuidado* (10,1 %,
-#   *lift* 2,1×)— reúnen ≈ 30 % de las publicaciones pero ≈ 78 % de los fraudes. NMF encontró un tópico aún más
-#   específico (*home, siding, remodeling, homeowners*: 20,8 % de fraude, *lift* 4,3×).
-# * **Existen "plantillas" repetitivas** de agencias (enseñanza de inglés en el extranjero —TEFL/TESOL—, programas de
-#   aprendices, avisos que redirigen a otra web) que forman grupos compactos con **0 % de fraude**. Esto no era visible
-#   en el EDA y explica parte de los duplicados de texto.
-# * En cambio, el fraude **no es una anomalía textual**: Isolation Forest alcanza solo PR-AUC = 0,10 (el 5 % más anómalo
-#   tiene 15 % de fraude, 3× la base, pero detecta muy pocos casos). Las ofertas falsas imitan bien a las reales.
-#
-# **6. ¿Qué relación hay entre las etiquetas y los grupos encontrados?**
-# Globalmente, **casi ninguna**: ARI ≈ 0 y NMI ≈ 0,02 para K-Means y Ward. Esto es lo esperado y no es un fracaso: los
-# grupos capturan el **tema** de la oferta (qué trabajo es), mientras que el fraude es una propiedad **transversal**
-# (cómo está escrita, qué promete, qué información omite). La relación aparece a nivel de **tasa de fraude por grupo**:
-# hay temas de riesgo alto (administración, atención al cliente, remodelación) y temas de riesgo prácticamente nulo
-# (desarrollo web, marketing digital, plantillas de agencias).
-#
-# **7. ¿Qué información se conserva y se pierde con la reducción de dimensionalidad?**
-# * **LSA (100 componentes)** conserva el 28 % de la varianza del TF-IDF; parece poco, pero no podemos afirmar que la varianza descartada sea solo ruido; también puede contener información útil. Esas 100 dimensiones bastan para que los grupos sean interpretables. Se pierden matices
-#   finos: nombres de empresas, frases como *"apply using link"* y bigramas específicos que el modelo supervisado sí
-#   aprovecha.
-# * **Las 2 primeras componentes de SVD** muestran casi solo la dirección "plantillas vs. resto": son lineales y
-#   globales, así que todo lo demás se solapa.
-# * **t-SNE** conserva bien los vecindarios locales y fue la proyección más legible: muestra las plantillas como islas y
-#   el fraude **concentrado en una región** del mapa, aunque mezclado con ofertas legítimas. Sus distancias entre islas
-#   no son interpretables.
-# * **UMAP** comprimió la mayor parte de los datos en un núcleo denso y dejó las plantillas como puntos aislados: en este
-#   corpus preservó más estructura global pero fue menos informativo visualmente que t-SNE.
-#
-# **8. ¿Qué enfoque recomendaríamos para una aplicación real?**
-# Recomendamos la **SVM lineal (o la Regresión Logística, si se necesitan probabilidades) con texto + variables
-# estructuradas como filtro de priorización**, no como bloqueador automático:
-# * Alto *recall* (≈88 %) con solo ~1 % de falsas alarmas sobre las legítimas: un equipo pequeño de moderación puede
-#   revisar lo marcado.
-# * Es rápido, barato de reentrenar y explicable (se puede mostrar al moderador qué palabras dispararon la alerta).
-# * El umbral debe fijarse según el costo: un fraude no detectado expone datos personales o dinero de una persona; una
-#   falsa alarma solo retrasa una publicación legítima. Con un umbral más bajo se gana *recall* a costa de revisar más.
-# * El **componente no supervisado** aporta como **capa complementaria**: los temas de alto riesgo pueden recibir
-#   revisión reforzada, y la detección de nuevos grupos permite descubrir esquemas de fraude que aún no están
-#   etiquetados.
-#
-# ### 7.2 Comparación final de modelos supervisados (conjunto de prueba)
-#
-# | Modelo | Enfoque | PR-AUC | ROC-AUC | Precision | Recall | F1 |
-# |---|---|---|---|---|---|---|
-# | Random Forest | estructurado | 0,825 | 0,982 | 0,663 | 0,749 | 0,703 |
-# | Regresión Logística (C=16, 1-2 gramas) | texto + estructurado | 0,924 | 0,992 | 0,838 | 0,877 | 0,857 |
-# | **SVM lineal (C=3, 1-2 gramas)** | texto + estructurado | **0,931** | 0,991 | 0,815 | 0,877 | 0,845 |
-#
-# *Umbral ajustado por validación cruzada para los modelos de texto.* Con el umbral por defecto la SVM obtiene
-# Precision 0,928 / Recall 0,825 / F1 0,873: el F1 es algo mayor, pero detecta menos fraudes. Elegimos el umbral
-# ajustado porque prioriza el *recall*, coherente con el costo asimétrico de los errores. Que el umbral "óptimo" de
-# validación cruzada no sea el óptimo exacto en prueba es normal: se estimó con modelos entrenados en 2/3 de los datos.
-# La diferencia entre la SVM y la Regresión Logística (PR-AUC 0,931 vs 0,924) está dentro de la variabilidad entre
-# pliegues (±0,01–0,03): ambas son opciones válidas.
-#
-# **Texto vs. estructuradas.** El texto por sí solo (PR-AUC CV 0,91) supera ampliamente a las variables estructuradas
-# (0,80). Agregar las estructuradas al texto no mejoró la PR-AUC en validación cruzada (0,909 vs 0,910), aunque sí
-# aumentó el *recall* con ponderación de clases. Conclusión: casi toda la señal útil está en **cómo está escrita la
-# oferta**; las variables estructuradas (logo, perfil vacío, industria) son redundantes con lo que el texto ya refleja.
+# **Consulta:** la comparación y las ocho respuestas se encuentran al inicio de la sección 7; la tabla de resultados se genera con la ejecución actual.
 
 # %% [markdown]
 # ## 8. Conclusiones y recomendaciones
 #
-# **Respuestas a las preguntas planteadas al inicio**
+# 1. El desbalance (4.86% de fraude después de depurar) exige interpretar Precision, Recall, F1 y AP. Accuracy sola puede ocultar que no se detectan los casos minoritarios.
+# 2. El mejor AP de validación entre los enfoques iniciales fue **B | LinearSVC balanced (texto)** (0.910). Las tablas permiten comparar texto, estructura y combinación usando los mismos pliegues. No inferimos causalidad a partir de coeficientes ni tasas por categoría.
+# 3. **LinearSVC** fue seleccionado entre los modelos combinados optimizados mediante validación, antes de usar la prueba. Su recall de prueba fue 88.3%, con 33 falsos positivos y 20 falsos negativos. El umbral responde al criterio F1 OOF, no a un costo económico estimado.
+# 4. Los métodos no supervisados descubren agrupaciones textuales con separación limitada. K-Means y Ward se comparan entrenados en la misma muestra; el K-Means del corpus completo se usa para perfiles. La estabilidad entre inicializaciones simples fue ARI medio = 0.578; no mide estabilidad de toda la cadena TF-IDF/SVD.
+# 5. Isolation Forest obtuvo AP = 0.097. Esto limita su utilidad como detector de fraude en esta representación; no prueba que el fraude nunca pueda detectarse como anomalía con otras variables.
 #
-# 1. **¿Qué distingue a una oferta fraudulenta?** En las variables estructuradas: **perfil de empresa vacío** (68 % de
-#    los fraudes vs 16 % de las legítimas), **ausencia de logo**, descripciones cortas, más correos y teléfonos de
-#    contacto en el texto, y ciertas industrias (petróleo y energía, contabilidad) y países (Australia, EE. UU.). En el
-#    texto: promesas de dinero (*earn, money, income, cash*), invitaciones a postular por fuera de la plataforma
-#    (*apply using link*, *urltoken*), y vocabulario de trabajos de entrada (*entry level, data entry, typing,
-#    administrative, work from home*). Las legítimas hablan de producto, equipo, cultura y tecnologías concretas.
-# 2. **¿El texto aporta más que las estructuradas?** Sí, claramente: PR-AUC de 0,91 con texto frente a 0,80 con las
-#    estructuradas. Combinarlas no mejora la PR-AUC, pero sí ayuda ligeramente al *recall*.
-# 3. **¿Cómo manejar el desbalance?** La **ponderación de clases** junto con el **ajuste del umbral** fue la mejor
-#    estrategia; el submuestreo empeoró mucho el modelo. La métrica guía debe ser la **PR-AUC**: la ROC-AUC (≈0,99 en
-#    casi todos los modelos) y la *accuracy* (≈98 %) no discriminan entre modelos buenos y mediocres.
-# 4. **¿Hay temáticas donde se concentra el fraude?** Sí: sin usar etiquetas, los temas de administración / oficina y
-#    de atención al cliente / trabajo desde casa reúnen ≈ 30 % de las ofertas y ≈ 78 % de los fraudes. Otros temas
-#    (desarrollo web, marketing digital, plantillas de agencias) prácticamente no tienen fraude.
-# 5. **¿Qué modelo recomendamos?** SVM lineal (o Regresión Logística) con TF-IDF de 1-2 gramas + variables
-#    estructuradas, usada como **filtro de priorización con revisión humana**: detecta ~88 % de los fraudes con ~1 % de
-#    falsas alarmas.
+# **Limitaciones:** corpus histórico y principalmente en inglés; posibles errores de etiquetas; dependencia entre publicaciones de una misma empresa; términos propios que pueden facilitar memorización; exploración histórica del mismo corpus en una versión previa; umbral OOF calculado después de seleccionar hiperparámetros con los mismos datos. La validación agrupada por texto reduce la fuga por copias exactas, pero no elimina toda semejanza entre empresas o plantillas.
 #
-# **Limitaciones**
-# * **Memorización de empresas:** entre los términos con más peso hacia fraude aparecen nombres propios (p. ej.
-#   *Aptitude Staffing*, *Northwestern*, *Bright Edge*). El modelo aprende en parte "qué empresas publicaron fraude en
-#   este dataset", y eso no generaliza a estafadores nuevos. Una mejora sería agrupar la partición también por empresa
-#   y medir cuánto cae el desempeño.
-# * **Datos de 2012–2014 y casi solo en inglés, con mayoría de EE. UU.:** los esquemas de fraude cambian (*concept
-#   drift*), por lo que el modelo debe reentrenarse periódicamente y vigilarse en producción.
-# * **Etiquetas imperfectas:** solo se marcaron como fraude las ofertas detectadas por la plataforma original; puede
-#   haber fraudes no etiquetados entre las "legítimas", lo que penaliza injustamente parte de las falsas alarmas.
-# * **Riesgo adversarial:** si los estafadores conocen las palabras que disparan la alerta, pueden evitarlas. Por eso
-#   conviene combinar el texto con señales difíciles de falsificar (verificación de la empresa, historial de la cuenta).
-# * **Agrupamiento:** la estructura temática es real pero difusa (silhouette ≈ 0,10, estabilidad moderada); los grupos
-#   deben leerse como tendencias, no como categorías nítidas.
-#
-# **Recomendaciones**
-# 1. Desplegar el clasificador como sistema de **priorización para moderadores**, con un umbral que se ajuste a la
-#    capacidad del equipo de revisión (moviéndose sobre la curva PR).
-# 2. Exigir **perfil de empresa y logo verificados** antes de publicar: son de las señales más fuertes y obligar a
-#    completarlas encarece el fraude.
-# 3. Aplicar **revisión reforzada a las temáticas de alto riesgo** (administración, data entry, atención al cliente /
-#    trabajo desde casa) identificadas por el componente no supervisado.
-# 4. Reentrenar periódicamente y monitorear grupos nuevos con el componente no supervisado para detectar esquemas que
-#    aún no estén etiquetados.
-#
-# **En síntesis:** el aprendizaje supervisado resolvió el problema operativo —detectar ofertas falsas— con alto
-# desempeño, y el no supervisado aportó el **contexto**: en qué tipo de ofertas aparece el fraude y por qué no se
-# puede detectar solo como "anomalía". Ambos enfoques son complementarios.
+# **Recomendaciones:** usar alertas para revisión humana; verificar identidad de empresas por medios externos; evaluar ofertas recientes y del idioma de interés; revisar tanto falsas alarmas como fraudes omitidos; considerar validación anidada y particiones por empresa; definir la capacidad de moderación antes de ajustar umbrales. Los temas con altas tasas históricas merecen análisis adicional y no justifican bloquear automáticamente sus publicaciones.
 
 # %% [markdown]
 # ## 9. Precisiones metodológicas y fuentes
@@ -1017,10 +920,44 @@ pd.Series(summary, name="valor").to_frame()
 # - Aquí llamamos PR-AUC a `average_precision_score` (AP). Resume la curva precisión-recall con ponderación por incrementos de recall; no es el área trapezoidal.
 # - El umbral maximiza F1 en predicciones OOF; no optimiza explícitamente recall ni un costo económico. Una política que priorice recall requiere definir previamente un mínimo de precision o un costo de errores.
 # - Los hiperparámetros se seleccionan antes de obtener OOF con los mismos pliegues: el F1 OOF puede ser optimista. Una validación anidada daría una estimación más estricta; el test reservado se usa al final.
-# - El EDA original examinó el corpus completo antes de reservar test. Aunque los pipelines se ajustan solo en entrenamiento, esa exploración puede influir en las decisiones. En un nuevo experimento debe reservarse test antes del EDA que oriente modelos.
-# - K-Means se entrena con todo el corpus y Ward con una muestra: evaluar en la misma muestra no iguala sus condiciones de entrenamiento. La comparación es exploratoria.
-# - La muestra de Ward conserva proporciones mediante la etiqueta únicamente para el muestreo. La etiqueta no entra en TF-IDF, SVD ni los algoritmos. Esto debe distinguirse de un muestreo totalmente independiente de etiquetas.
+# - La versión revisada reserva test antes del EDA y restringe esa exploración al entrenamiento. Una versión anterior había examinado el corpus completo; por ese antecedente, conviene una evaluación externa con datos nuevos.
+# - Para comparar K-Means y Ward, ambos se entrenan y evalúan en la misma muestra aleatoria. Un K-Means adicional se ajusta al corpus completo para construir perfiles.
+# - La muestra se selecciona aleatoriamente sin etiquetas. Se conserva la semilla; sus métricas describen esa muestra y no garantizan representatividad de todos los temas.
 # - Una silhouette baja indica separación limitada en esta representación; no existe un rango universal aceptable para texto. La varianza descartada por SVD puede contener información útil.
 # - La ausencia de campos asociada al fraude no demuestra un mecanismo estadístico de datos faltantes ni causalidad. Un logo presente tampoco equivale a una empresa verificada.
 #
 # **Fuentes para consulta:** dataset proporcionado en la guía: https://www.kaggle.com/datasets/shivamb/real-or-fake-fake-jobposting-prediction ; documentación de las herramientas: https://scikit-learn.org/stable/user_guide.html ; material docente de semanas 4, 5, 6, 7–8 y 12–13.
+
+# %%
+# Guardamos tablas para contrastar README, conclusiones y sustentación.
+import json
+import hashlib
+import platform
+import sklearn
+RESULTS_DIR = PROJECT_DIR / "results"
+RESULTS_DIR.mkdir(exist_ok=True)
+res.to_csv(RESULTS_DIR / "validacion_cruzada.csv", index_label="modelo")
+test_res.to_csv(RESULTS_DIR / "evaluacion_test.csv", index=False)
+unsup_metrics.to_csv(RESULTS_DIR / "agrupamientos.csv", index_label="modelo")
+profile.to_csv(RESULTS_DIR / "perfiles_kmeans.csv", index_label="grupo")
+sel.to_csv(RESULTS_DIR / "seleccion_k.csv")
+topics.to_csv(RESULTS_DIR / "topicos_nmf.csv", index_label="topico")
+tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+run_report = {
+    "modelo_seleccionado_por_cv": best_name,
+    "cv_ap_seleccionado": float(best[best_name].best_score_),
+    "hiperparametros": {name: gs.best_params_ for name, gs in best.items()},
+    "umbrales_oof": {name: float(value) for name, value in thresholds.items()},
+    "test": {"n": len(y_test), "fraudes": int(y_test.sum()), "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp),
+             "precision": float(precision_score(y_test, y_pred)), "recall": float(recall_score(y_test, y_pred)),
+             "f1": float(f1_score(y_test, y_pred)), "ap": float(average_precision_score(y_test, s_best)), "roc_auc": float(roc_auc_score(y_test, s_best))},
+    "n_ofertas": len(df), "tasa_fraude": float(y.mean()), "k": K,
+    "varianza_svd": float(svd.explained_variance_ratio_.sum()),
+    "estabilidad_ari_media": float(np.mean(ari_runs)),
+    "isolation_ap": float(average_precision_score(y, anom)),
+    "sha256_csv": hashlib.sha256(DATA_PATH.read_bytes()).hexdigest(),
+    "python": platform.python_version(), "sklearn": sklearn.__version__, "pandas": pd.__version__, "numpy": np.__version__,
+}
+(RESULTS_DIR / "resumen.json").write_text(json.dumps(run_report, indent=2, ensure_ascii=False))
+print("Tablas y resumen guardados en", RESULTS_DIR)
+
