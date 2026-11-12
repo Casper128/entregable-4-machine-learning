@@ -1,107 +1,74 @@
 # Evento Evaluativo 4 — Equipo 10
 
-**Estado:** revisión técnica realizada; falta ejecutar de nuevo con el CSV. Las cifras siguientes pertenecen a la ejecución original y deben contrastarse con la versión corregida. Ver [revisión de rúbrica](docs/revision_rubrica.md) y [colaboración](docs/colaboracion.md).
-## Detección de ofertas laborales fraudulentas y análisis de patrones textuales
+Detección de ofertas laborales fraudulentas y análisis de patrones textuales.
 
-**Asignatura:** Análisis de Datos · **Docente:** Daniel Alexis Nieto Mora · **Programa:** Ingeniería en Ciencia de Datos · **Grupo:** 190304018-1 · **Periodo:** 2026-2
+Asignatura: Análisis de Datos. Docente: Daniel Alexis Nieto Mora. Ingeniería en Ciencia de Datos, periodo 2026-2.
 
-### Integrantes
-| Nombre | Usuario GitHub | Responsabilidad principal |
-|---|---|---|
-| Por confirmar | @dariomontoya0505 | Aporte por confirmar |
-| Por confirmar | @Franyelica | Aporte por confirmar |
-| Por confirmar | @santiagopabon15 | Aporte por confirmar |
-| Darwin | @Casper128 | Aporte por confirmar |
+## Integrantes
 
----
+- @Casper128 (Darwin).
+- @dariomontoya0505.
+- @Franyelica.
+- @santiagopabon15.
 
-### 1. Descripción del problema
-Las plataformas de empleo se usan para publicar ofertas falsas que buscan robar datos personales o estafar a los
-solicitantes. Con el dataset *Real or Fake Job Posting Prediction* (≈17.9 mil publicaciones, ≈4.8 % fraudulentas)
-desarrollamos dos componentes:
+Los nombres completos y aportes individuales deben ser confirmados por el equipo. No se presentan responsabilidades propuestas como contribuciones ya realizadas.
 
-* **Supervisado:** clasificar ofertas como legítimas o fraudulentas comparando tres enfoques: solo variables
-  estructuradas, solo texto (TF-IDF) y texto + estructuradas.
-* **No supervisado:** descubrir temáticas en las publicaciones con TF-IDF + LSA + agrupamiento (K-Means y
-  aglomerativo Ward, más NMF e Isolation Forest como complemento) **sin usar la etiqueta**, y analizar después si
-  algún grupo concentra fraude.
+## Problema y datos
 
-### 2. Fuente de datos
-* Kaggle — *Real or Fake: Fake JobPosting Prediction*: <https://www.kaggle.com/datasets/shivamb/real-or-fake-fake-jobposting-prediction>
-* Origen: EMSCAD (Employment Scam Aegean Dataset), Universidad del Egeo.
-* Archivo usado: `fake_job_postings.csv` (no se versiona en el repositorio por su tamaño; ver instrucciones).
+Buscamos clasificar ofertas legítimas y fraudulentas, y descubrir temas mediante agrupamiento sin etiquetas. Fuente: [Real or Fake Job Posting Prediction, Kaggle](https://www.kaggle.com/datasets/shivamb/real-or-fake-fake-jobposting-prediction). El CSV original contiene 17 880 ofertas y 866 fraudes; tras eliminar duplicados exactos quedan 17599 ofertas (4.86% fraudulentas).
 
-### 3. Estructura del proyecto
-```
-evaluacion 4/
-├── README.md
-├── requirements.txt
-├── evento4_fake_jobs.ipynb     # notebook principal (resultados originales; requiere reejecución)
-├── evento4_fake_jobs.py        # mismo notebook en formato script (jupytext, cómodo para revisar diffs)
-├── data/
-│   └── fake_job_postings.csv   # descargar de Kaggle (no incluido)
-├── figures/                    # figuras generadas automáticamente por el notebook
-└── video/
-    └── enlace_video.md         # enlace al video de presentación (máx. 12 min)
-```
+## Ejecución
 
-### 4. Instrucciones de ejecución
+Desde esta carpeta, usando Python 3.12:
+
 ```bash
-pip install -r requirements.txt
-# descargar fake_job_postings.csv de Kaggle y copiarlo en data/
-jupyter notebook evento4_fake_jobs.ipynb   # Kernel → Restart & Run All
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-lock.txt
+python descargar_datos.py
+jupyter notebook evento4_fake_jobs.ipynb
 ```
-Tiempo aproximado de ejecución completa: 12–25 min en un portátil (la búsqueda de hiperparámetros es la parte más
-costosa). Todas las semillas están fijadas (`SEED = 42`) para que los resultados sean reproducibles.
 
-### 5. Metodología (resumen)
-1. **EDA:** desbalance, faltantes por clase (son informativos), cardinalidad, tasas de fraude por categoría,
-   longitud del texto, términos distintivos y correlaciones.
-2. **Preprocesamiento:** limpieza de texto, TF-IDF de 1-2 gramas, indicadores de faltantes, país extraído de
-   `location`, One-Hot con agrupación de categorías raras, `log1p` + escalado. **Partición 80/20 estratificada
-   antes de ajustar cualquier transformación; todo dentro de `Pipeline`** para evitar fuga de información.
-3. **Supervisado:** Regresión Logística, SVM lineal, Random Forest y HistGradientBoosting; comparación de
-   estrategias de desbalance (sin tratamiento, ponderación de clases, submuestreo y ajuste de umbral);
-   `GridSearchCV` optimizando PR-AUC; evaluación final única en test con Precision, Recall, F1, PR-AUC, ROC-AUC y
-   matriz de confusión; interpretación de coeficientes e importancias; análisis de errores.
-4. **No supervisado:** TF-IDF → LSA (100 componentes) → K-Means (k elegido con Silhouette, Davies-Bouldin,
-   Calinski-Harabasz y codo) y aglomerativo Ward; estabilidad (ARI entre semillas); perfiles de grupos con
-   términos representativos y ejemplos; tópicos NMF; Isolation Forest.
-5. **Visualización:** proyecciones SVD, t-SNE y UMAP coloreadas por grupo y por etiqueta.
-6. **Análisis comparativo** supervisado vs. no supervisado (8 preguntas de la guía) y conclusiones.
+En Windows activar el entorno con `.venv\Scripts\activate`. En Jupyter elegir el kernel del entorno y ejecutar “Restart Kernel and Run All Cells”. La búsqueda de parámetros y las proyecciones pueden tardar varios minutos; el tiempo depende del equipo. El script `.py` es una representación con celdas `# %%`, útil para revisar cambios; el notebook es la entrega principal. Las advertencias de convergencia deben revisarse.
 
-### 6. Principales resultados
-**Datos:** 17 880 ofertas → 17 599 tras eliminar 281 duplicados exactos; 4,86 % fraudulentas. Partición 80/20
-estratificada y **agrupada por texto** (las ~1 800 ofertas con texto repetido nunca quedan repartidas entre
-entrenamiento y prueba).
+## Metodología
 
-**Componente supervisado — conjunto de prueba (3 520 ofertas, 171 fraudes)**
+1. Reserva de prueba por grupos antes del EDA; distribuciones, faltantes, texto, duplicados, correlaciones y categorías en entrenamiento.
+2. Limpieza, TF-IDF, codificación y escalado en pipelines; separación de entrenamiento/prueba agrupada por textos repetidos.
+3. Comparación de regresión logística, SVM y referencias tabulares; ponderación, submuestreo y umbral OOF. Selección por AP de validación.
+4. TF-IDF y SVD; K-Means y Ward comparados en la misma muestra aleatoria sin etiquetas. Perfiles en el corpus completo y complementos NMF/Isolation Forest.
+5. Visualizaciones SVD, t-SNE y UMAP; comparación de enfoques y limitaciones.
 
-| Modelo | Enfoque | PR-AUC | ROC-AUC | Precision | Recall | F1 |
-|---|---|---|---|---|---|---|
-| Random Forest | solo estructuradas | 0,825 | 0,982 | 0,663 | 0,749 | 0,703 |
-| Regresión Logística | texto + estructuradas | 0,924 | 0,992 | 0,838 | 0,877 | 0,857 |
-| **SVM lineal (seleccionado)** | texto + estructuradas | **0,931** | 0,991 | 0,815 | 0,877 | 0,845 |
+## Resultados verificados
 
-* El modelo seleccionado detecta **150 de 171 fraudes** con solo 34 falsas alarmas entre 3 349 ofertas legítimas (1 %).
-* El **texto** es la fuente principal de señal (PR-AUC en validación cruzada: 0,91 con texto vs 0,80 con
-  estructuradas).
-* La mejor estrategia de desbalance fue **ponderar las clases y ajustar el umbral**; el submuestreo empeoró el
-  modelo (PR-AUC 0,64).
-* Señales de fraude: perfil de empresa vacío, sin logo, promesas de dinero (*earn, money, income*), "apply using
-  link", trabajos de entrada / data entry / desde casa, industria de petróleo y energía.
+Modelo seleccionado por validación: **LinearSVC** (AP CV 0.875). En prueba: 3520 ofertas, 171 fraudes; TP=151, FN=20, FP=33, TN=3316.
 
-**Componente no supervisado**
-* TF-IDF → LSA (100 componentes) → K-Means con k = 11 (silhouette 0,105) y aglomerativo Ward (silhouette 0,081).
-* Los grupos describen **temas** y no la etiqueta (ARI ≈ 0), pero el fraude se concentra: los temas
-  *administración / oficina* (16,8 % de fraude, 3,5× la tasa global) y *atención al cliente / trabajo desde casa*
-  (10,1 %) reúnen ≈ 30 % de las ofertas y ≈ 78 % de los fraudes. Plantillas de agencias (TEFL, aprendices) forman
-  grupos con 0 % de fraude.
-* Isolation Forest muestra que el fraude **no es una anomalía textual** (PR-AUC 0,10): las ofertas falsas imitan a
-  las reales.
+| modelo | umbral | precision | recall | f1 | pr_auc | roc_auc |
+| --- | --- | --- | --- | --- | --- | --- |
+| RandomForest (estructurado) | umbral por defecto | 0.660 | 0.737 | 0.696 | 0.824 | 0.981 |
+| LogReg (texto+estructurado) | umbral por defecto | 0.860 | 0.860 | 0.860 | 0.922 | 0.991 |
+| LogReg (texto+estructurado) | umbral ajustado (OOF) | 0.898 | 0.825 | 0.860 | 0.922 | 0.991 |
+| LinearSVC (texto+estructurado) | umbral por defecto | 0.907 | 0.860 | 0.883 | 0.930 | 0.992 |
+| LinearSVC (texto+estructurado) | umbral ajustado (OOF) | 0.821 | 0.883 | 0.851 | 0.930 | 0.992 |
 
-**Recomendación:** usar la SVM lineal / Regresión Logística como filtro de priorización con revisión humana y
-revisión reforzada en los temas de alto riesgo. Limitaciones y detalle en las secciones 7 y 8 del notebook.
+Se llama PR-AUC a AP en las tablas; se calcula con `average_precision_score`, no integración trapezoidal. El umbral se elige para maximizar F1 OOF, no recall explícitamente.
 
-### 7. Video
-Enlace: _(completar)_ — ver `video/enlace_video.md`.
+Agrupamiento: k=11; silhouette en muestra: K-Means 0.121, Ward 0.107. SVD conserva 27.9% de la varianza con 100 componentes. Estos resultados muestran separación limitada; los grupos se interpretan con términos y ejemplos, no como detectores definitivos de fraude.
+
+**Recomendación:** priorizar revisión humana con el clasificador; usar los temas como contexto. Límites: antigüedad e idioma del corpus, posibles etiquetas imperfectas, memorización de empresas, exploración histórica del mismo corpus en una versión previa y selección de parámetros previa a OOF. Consultar secciones 7–9 del notebook.
+
+## Archivos
+
+- `evento4_fake_jobs.ipynb`: desarrollo ejecutado y resultados.
+- `evento4_fake_jobs.py`: celdas equivalentes para revisión.
+- `descargar_datos.py` y `data/README.md`: obtención y huella del CSV; datos fuera de Git.
+- `results/`: métricas, perfiles, selección k y resumen de ejecución.
+- `figures/`: figuras regeneradas.
+- `docs/revision_rubrica.md`: evidencia por criterio y pendientes reales.
+- `docs/explicacion_metodos.md`: apoyo para sustentar.
+- `docs/colaboracion.md`: procedimiento para aportes reales.
+- `video/guion.md`: distribución de hasta 12 minutos; `video/enlace_video.md`: enlace pendiente de grabación.
+
+## Verificación
+
+Notebook ejecutado desde cero con el CSV cuya huella SHA-256 es `59253295129d8b6a27607f9904f7d4ddf4dbb0ee35e079c7eb51b58b5e62bf60`. Versiones y métricas están en `results/resumen.json`; dependencias exactas en `requirements-lock.txt`. Las cifras se regeneraron con la versión corregida. El video y la participación individual siguen pendientes de completar por los integrantes.
